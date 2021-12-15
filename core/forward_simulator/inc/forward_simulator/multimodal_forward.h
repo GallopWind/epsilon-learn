@@ -7,19 +7,24 @@
 
 #include "forward_simulator/onlane_forward_simulation.h"
 
-namespace planning {
+namespace planning
+{
 
-class MultiModalForward {
- public:
-  using Lane = common::Lane;
-  using VehicleSet = common::VehicleSet;
-  using GridMap = common::GridMapND<uint8_t, 2>;
-  using State = common::State;
-  typedef int AggressivenessLevel;
+  class MultiModalForward
+  {
+  public:
+    using Lane = common::Lane;
+    using VehicleSet = common::VehicleSet;
+    using GridMap = common::GridMapND<uint8_t, 2>;
+    using State = common::State;
+    typedef int AggressivenessLevel;
 
-  static ErrorType ParamLookUp(const AggressivenessLevel& agg_level,
-                               OnLaneForwardSimulation::Param* param) {
-    switch (agg_level) {
+    static ErrorType ParamLookUp(const AggressivenessLevel &agg_level,
+                                 OnLaneForwardSimulation::Param *param)
+    {
+      //  multi modal agent, define different aggressive level parameters.
+      switch (agg_level)
+      {
       case 1:
         param->idm_param.kDesiredHeadwayTime = 2.0;
         param->idm_param.kMinimumSpacing = 2.5;
@@ -58,13 +63,13 @@ class MultiModalForward {
       default:
         assert(false);
         break;
+      }
+      return kSuccess;
     }
-    return kSuccess;
-  }
 
- private:
-};
+  private:
+  };
 
-}  // namespace planning
+} // namespace planning
 
 #endif
