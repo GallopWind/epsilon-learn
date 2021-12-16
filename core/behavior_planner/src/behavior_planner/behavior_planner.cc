@@ -73,8 +73,11 @@ namespace planning
               1. get ego vehicle info
               2. get ego lane info.
   ~ step 2: decision making on the applicable behavior set
+              1.
   ~ step 3: construct complete semantic bahavior
+              1. ConstructReferenceLane
   */
+    // ------------------------------------------------------------------------
     int ego_lane_id_by_pos = kInvalidLaneId;
     if (map_itf_->GetEgoLaneIdByPosition(p_route_planner_->navi_path(),
                                          &ego_lane_id_by_pos) != kSuccess)
@@ -92,6 +95,7 @@ namespace planning
     ego_id_ = ego_vehicle.id();
 
     // for what?
+    // ???
     if (use_sim_state_)
     {
       RunRoutePlanner(ego_lane_id_by_pos);
@@ -113,6 +117,8 @@ namespace planning
     UpdateEgoLaneId(ego_lane_id_by_pos);
     printf("[MPDM]ego lane id: %d.\n", ego_lane_id_);
 
+    // logic code. check the last and current behavior.
+    // ???
     if (UpdateEgoBehavior(behavior_by_lane_id) != kSuccess)
     {
       printf("[RunOnce]fail to update ego behavior!\n");
@@ -126,11 +132,14 @@ namespace planning
       behavior_.lat_behavior = common::LateralBehavior::kLaneKeeping;
     }
 
+    // ------------------------------------------------------------------------
     behavior_.actual_desired_velocity = user_desired_velocity_;
     if (autonomous_level_ >= 3)
     {
       TicToc timer;
+      // look up different aggressive level, plan parameters.
       planning::MultiModalForward::ParamLookUp(aggressive_level_, &sim_param_);
+      // core behavior plan function. RunMpdm()
       if (RunMpdm() != kSuccess)
       {
         printf("[Summary]Mpdm failed: %lf ms.\n", timer.toc());
@@ -147,7 +156,7 @@ namespace planning
       }
       printf("[Summary]Mpdm time cost: %lf ms.\n", timer.toc());
     }
-
+    // ------------------------------------------------------------------------
     if (ConstructReferenceLane(behavior_.lat_behavior, &behavior_.ref_lane) !=
         kSuccess)
     {
@@ -178,12 +187,15 @@ namespace planning
     std::cout << "[BehaviorPlanner]" << ego_vehicle.id()
               << "\tsemantic_vehicle_set num:"
               << semantic_vehicle_set.semantic_vehicles.size() << std::endl;
-
     // * clean the states
     forward_trajs_.clear();
     forward_behaviors_.clear();
     surround_trajs_.clear();
 
+    // ------------------------------------------------------------------------
+    // get other vehicle most likely behavior, and get their refer lane.
+
+    // equal to std::vector<LateralBehavior> potential_behaviors{kLaneChangeLeft,kLaneKeeping,kLaneChangeRight};
     // * collect potential behaviors
     std::vector<LateralBehavior> potential_behaviors{
         common::LateralBehavior::kLaneKeeping};
@@ -198,6 +210,9 @@ namespace planning
          it != semantic_vehicle_set.semantic_vehicles.end(); ++it)
     {
       common::LateralBehavior lat_behavior;
+      // core func.
+      // for other vehicle, we get a predicted behavior, trust it.
+      // and assume that vehicle will not change the behavior during the forward.
       if (map_itf_->GetPredictedBehavior(it->second.vehicle.id(),
                                          &lat_behavior) != kSuccess)
       {
@@ -206,6 +221,7 @@ namespace planning
       decimal_t forward_lane_len =
           std::max(it->second.vehicle.state().velocity * 10.0, 50.0);
       common::Lane ref_lane;
+      // according to their behavior, got there refer lane.
       if (map_itf_->GetRefLaneForStateByBehavior(
               it->second.vehicle.state(), std::vector<int>(), lat_behavior,
               forward_lane_len, max_backward_len, false, &ref_lane) == kSuccess)
@@ -214,17 +230,26 @@ namespace planning
       }
     }
 
+    // ------------------------------------------------------------------------
+    // simulate ego vehicle valid behavior.
+    // then for every behavior use DCP-Tree and forward simulate.
+    // then evaluate behavior and choose best as output.
+
     // * forward simulation
     std::vector<LateralBehavior> valid_behaviors;
     vec_E<vec_E<common::Vehicle>> valid_forward_trajs;
     vec_E<std::unordered_map<int, vec_E<common::Vehicle>>> valid_surround_trajs;
     int num_available_behaviors = static_cast<int>(potential_behaviors.size());
 
-    // TicToc timer;
+    TicToc timer;
     for (int i = 0; i < num_available_behaviors; i++)
     {
       vec_E<common::Vehicle> traj;
       std::unordered_map<int, vec_E<common::Vehicle>> sur_trajs;
+      // simulate ego vehicle potential behavior.
+      // ???
+      // it seems that for each available behavior, generate a traj.
+      // however, it seems that there are only three behavior.
       if (SimulateEgoBehavior(ego_vehicle, potential_behaviors[i],
                               semantic_vehicle_set, &traj,
                               &sur_trajs) != kSuccess)
@@ -256,6 +281,9 @@ namespace planning
     decimal_t winner_score, winner_desired_vel;
     LateralBehavior winner_behavior;
     vec_E<common::Vehicle> winner_forward_traj;
+    // !!!
+    // core func.
+    // for each valid_behavior, will use DCP-Tree to evaluate the best action sequence.
     if (EvaluateMultiPolicyTrajs(valid_behaviors, valid_forward_trajs,
                                  valid_surround_trajs, &winner_behavior,
                                  &winner_forward_traj, &winner_score,
@@ -440,6 +468,8 @@ namespace planning
     for (int i = 0; i < num_valid_behaviors; i++)
     {
       decimal_t score, vel;
+      // ???
+      // valid_forward_trajs, valid_surround_trajs, for each policy.
       EvaluateSinglePolicyTraj(valid_behaviors[i], valid_forward_trajs[i],
                                valid_surround_trajs[i], &score, &vel);
       // printf("[Stuck]id: %d behavior %d with cost: %lf.\n", ego_id_,
@@ -494,6 +524,10 @@ namespace planning
     return kSuccess;
   }
 
+  // !!!
+  // core logic func.
+  // given self spatio-temporal traj, and surround trajs.
+  // now evaluate the efficiency and safety cost.
   ErrorType BehaviorPlanner::EvaluateSinglePolicyTraj(
       const LateralBehavior &behavior, const vec_E<common::Vehicle> &forward_traj,
       const std::unordered_map<int, vec_E<common::Vehicle>> &surround_traj,
@@ -708,6 +742,8 @@ namespace planning
     if (map_itf_ == nullptr)
       return kWrongStatus;
 
+    // if behavior change.
+    // update last behavior.
     int target_lane_id;
     if (lat_behavior == common::LateralBehavior::kLaneKeeping ||
         lat_behavior == common::LateralBehavior::kUndefined)
@@ -741,7 +777,7 @@ namespace planning
     {
       assert(false);
     }
-
+    // get local info
     State ego_state;
     map_itf_->GetEgoState(&ego_state);
 
@@ -755,6 +791,8 @@ namespace planning
       return kWrongStatus;
     }
 
+    // use sample and optimal method to construct lane.
+    // !!!
     if (ConstructLaneFromSamples(samples, lane) != kSuccess)
     {
       return kWrongStatus;
@@ -778,6 +816,7 @@ namespace planning
     // reference_desired_velocity_ =
     //     std::min(std::max(v_ref - 3.0, 0.0), user_desired_velocity_);
 
+    // ???
     decimal_t c, cc;
     decimal_t v_max_by_curvature;
     decimal_t v_ref = kInf;
@@ -821,10 +860,13 @@ namespace planning
       para.push_back(d);
     }
 
+    // if use linspace of front and back, so what is meaning of computing d above.
     const int num_segments = 20;
     Eigen::ArrayXf breaks =
         Eigen::ArrayXf::LinSpaced(num_segments, para.front(), para.back());
 
+    // use sample and optimal method to generate a lane.
+    // OOQP.
     const decimal_t regulator = (double)1e6;
     if (common::LaneGenerator::GetLaneBySampleFitting(
             samples, para, breaks, regulator, lane) != kSuccess)

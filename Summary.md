@@ -26,7 +26,17 @@ d: change lane to right
 
 ### core
 
+#### common
+##### lane
+
+use OOQP to optimize the lane.
+
 #### behavior_planner
+
+##### MPDM_planner
+
+- this method doesn't use DCP-Tree.
+- questionable!
 
 #### forward_simulator
 
