@@ -38,6 +38,8 @@ use OOQP to optimize the lane.
 - this method doesn't use DCP-Tree.
 - questionable!
 
+- this planner only assume that ego vehicle will behavior immediately. can make that plan like accelerate then cut in.
+
 #### forward_simulator
 
 - multimodal_forward.h
