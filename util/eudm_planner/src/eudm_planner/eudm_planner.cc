@@ -290,6 +290,7 @@ namespace planning
       return kWrongStatus;
     }
 
+    // get surrounding vehicle agent. Agent lateral behavior is managed by semantic map manager.
     ForwardSimAgentSet surrounding_fsagents;
     GetSurroundingForwardSimAgents(surrounding_semantic_vehicles,
                                    &surrounding_fsagents);
@@ -303,9 +304,13 @@ namespace planning
 
     // * threading
     // TODO(@lu.zhang) Use thread pool?
+    // !!!
+    // use multi thread according to sequence number is very terrible.
+    // must optimize here.
     TicToc timer;
     for (int i = 0; i < n_sequence; ++i)
     {
+      // new multi thread to run every action sequence.
       thread_set[i] =
           std::thread(&EudmPlanner::SimulateActionSequence, this, ego_vehicle_,
                       surrounding_fsagents, action_script[i], i);
@@ -329,46 +334,49 @@ namespace planning
       }
     }
 
-    for (int i = 0; i < n_sequence; ++i)
+    // log code.
     {
-      std::ostringstream line_info;
-      line_info << "[Eudm][Result]" << i << " [";
-      for (const auto &a : action_script[i])
+      for (int i = 0; i < n_sequence; ++i)
       {
-        line_info << DcpTree::RetLonActionName(a.lon);
-      }
-      line_info << "|";
-      for (const auto &a : action_script[i])
-      {
-        line_info << DcpTree::RetLatActionName(a.lat);
-      }
-      line_info << "]";
-      line_info << "[s:" << sim_res_[i] << "|r:" << risky_res_[i]
-                << "|c:" << std::fixed << std::setprecision(3) << final_cost_[i]
-                << "]";
-      line_info << " " << sim_info_[i] << "\n";
-      if (sim_res_[i])
-      {
-        line_info << "[Eudm][Result][e;s;n;w:";
-        for (const auto &c : progress_cost_[i])
+        std::ostringstream line_info;
+        line_info << "[Eudm][Result]" << i << " [";
+        for (const auto &a : action_script[i])
         {
-          line_info << std::fixed << std::setprecision(2)
-                    << c.efficiency.ego_to_desired_vel << "_"
-                    << c.efficiency.leading_to_desired_vel << ";" << c.safety.rss
-                    << "_" << c.safety.occu_lane << ";"
-                    << c.navigation.lane_change_preference << ";" << c.weight;
-          line_info << "|";
+          line_info << DcpTree::RetLonActionName(a.lon);
+        }
+        line_info << "|";
+        for (const auto &a : action_script[i])
+        {
+          line_info << DcpTree::RetLatActionName(a.lat);
         }
         line_info << "]";
+        line_info << "[s:" << sim_res_[i] << "|r:" << risky_res_[i]
+                  << "|c:" << std::fixed << std::setprecision(3) << final_cost_[i]
+                  << "]";
+        line_info << " " << sim_info_[i] << "\n";
+        if (sim_res_[i])
+        {
+          line_info << "[Eudm][Result][e;s;n;w:";
+          for (const auto &c : progress_cost_[i])
+          {
+            line_info << std::fixed << std::setprecision(2)
+                      << c.efficiency.ego_to_desired_vel << "_"
+                      << c.efficiency.leading_to_desired_vel << ";" << c.safety.rss
+                      << "_" << c.safety.occu_lane << ";"
+                      << c.navigation.lane_change_preference << ";" << c.weight;
+            line_info << "|";
+          }
+          line_info << "]";
+        }
+        LOG(WARNING) << line_info.str();
       }
-      LOG(WARNING) << line_info.str();
-    }
-    LOG(WARNING) << "[Eudm][Result]Sim status: " << sim_success << " with "
-                 << num_valid_behaviors << " behaviors.";
-    if (!sim_success)
-    {
-      LOG(ERROR) << "[Eudm][Fatal]Fail to find any valid behavior. Exit";
-      return kWrongStatus;
+      LOG(WARNING) << "[Eudm][Result]Sim status: " << sim_success << " with "
+                   << num_valid_behaviors << " behaviors.";
+      if (!sim_success)
+      {
+        LOG(ERROR) << "[Eudm][Fatal]Fail to find any valid behavior. Exit";
+        return kWrongStatus;
+      }
     }
 
     // * evaluate
@@ -612,6 +620,7 @@ namespace planning
     return kSuccess;
   }
 
+  // simulate a action sequence in scenario.
   ErrorType EudmPlanner::SimulateScenario(
       const common::Vehicle &ego_vehicle,
       const ForwardSimAgentSet &surrounding_fsagents,
@@ -761,6 +770,8 @@ namespace planning
             surround_trajs_multisteps.at(id).end());
       }
 
+      // ???
+      // compute cost for each layer?
       CostStructure cost;
       bool verbose = false;
       std::set<int> risky_ids;
@@ -803,6 +814,8 @@ namespace planning
     return kSuccess;
   }
 
+  // core func.
+  // this simulate one ego action sequences.
   ErrorType EudmPlanner::SimulateActionSequence(
       const common::Vehicle &ego_vehicle,
       const ForwardSimAgentSet &surrounding_fsagents,
@@ -815,6 +828,7 @@ namespace planning
       return kWrongStatus;
     }
 
+    // ???
     // ~ For each ego sequence, we may further branch here, which will create
     // ~ multiple sub threads. Currently, we use n_sub_threads = 1
     // TODO(@lu.zhang) Preliminary safety assessment here
@@ -1050,6 +1064,7 @@ namespace planning
     }
 
     TicToc timer;
+    // main func.
     if (RunEudm() != kSuccess)
     {
       LOG(ERROR) << std::fixed << std::setprecision(4)
@@ -1418,6 +1433,8 @@ namespace planning
     return kSuccess;
   }
 
+  // core.
+  // simulate a layer, and update state.
   ErrorType EudmPlanner::SimulateSingleAction(
       const DcpAction &action, const ForwardSimEgoAgent &ego_fsagent_this_layer,
       const ForwardSimAgentSet &surrounding_fsagents_this_layer,
@@ -1535,6 +1552,9 @@ namespace planning
     return kSuccess;
   }
 
+  // core.
+  // According to ago behavior, simulate forward.
+  // behavior -> motion is key.
   ErrorType EudmPlanner::EgoAgentForwardSim(
       const ForwardSimEgoAgent &ego_fsagent,
       const common::VehicleSet &all_sim_vehicles, const decimal_t &sim_time_step,

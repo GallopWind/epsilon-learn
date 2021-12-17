@@ -943,9 +943,11 @@ namespace planning
 
     static TicToc sum_reselect_timer;
     sum_reselect_timer.tic();
+
     // * III: Summarize
     Snapshot snapshot;
     SaveSnapshot(&snapshot);
+
     // * IV: Reselect
     if (ReselectByContext(stamp, snapshot, &snapshot.processed_winner_id) !=
         kSuccess)
@@ -994,6 +996,7 @@ namespace planning
 
     last_snapshot_ = snapshot;
     GenerateLaneChangeProposal(stamp, task);
+
     // * V: Update
     context_.is_valid = true;
     context_.seq_start_time = stamp;
